@@ -1,12 +1,16 @@
 import { Location, Route } from './types';
 
-export async function getRoute(from: Location, to: Location): Promise<Route | null> {
+export async function getRoute(
+  from: Location,
+  to: Location,
+  options?: { signal?: AbortSignal }
+): Promise<Route | null> {
   const coords = `${from.lon},${from.lat};${to.lon},${to.lat}`;
   const url = `/api/route?coords=${coords}`;
 
   try {
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
+      signal: options?.signal ?? AbortSignal.timeout(15000),
     });
     if (!response.ok) return null;
 
