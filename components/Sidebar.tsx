@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Kindergarten } from '@/lib/types';
 
 interface SidebarProps {
@@ -47,6 +48,11 @@ function ClaimModal({ kg, onClose }: { kg: Kindergarten; onClose: () => void }) 
   const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,8 +71,10 @@ function ClaimModal({ kg, onClose }: { kg: Kindergarten; onClose: () => void }) 
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
         {submitted ? (
           <div className="text-center py-4">
@@ -102,7 +110,8 @@ function ClaimModal({ kg, onClose }: { kg: Kindergarten; onClose: () => void }) 
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
