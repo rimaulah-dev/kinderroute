@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { geocodeAddress } from '@/lib/geocoding';
 import { searchKindergartensAlongRoute } from '@/lib/kindergartens';
@@ -26,44 +26,55 @@ export default function Home() {
   const [maxDistanceMetres, setMaxDistanceMetres] = useState(1500);
   const [hasSearched, setHasSearched] = useState(false);
   const [routeSummary, setRouteSummary] = useState<{ distance: number; duration: number } | null>(null);
+  const [searchStage, setSearchStage] = useState<'idle' | 'geocoding' | 'routing' | 'finding'>('idle');
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const stageLabel: Record<'idle' | 'geocoding' | 'routing' | 'finding', string> = {
+    idle: '',
+    geocoding: 'Finding addresses...',
+    routing: 'Calculating route...',
+    finding: 'Finding kindergartens...',
+  };
 
   const handleSearch = async () => {
+    if (isLoading) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsLoading(true);
+    setSearchStage('geocoding');
+    setSearchNotice(null);
     setError(null);
-    setRoute(null);
-    setRouteSummary(null);
-    setAllKindergartens([]);
-    setFilteredKindergartens([]);
-    setSelectedKindergarten(null);
 
     try {
-      const locA = await geocodeAddress(pointA);
-      const locB = await geocodeAddress(pointB);
+      const [locA, locB] = await Promise.all([
+        geocodeAddress(pointA, { signal: controller.signal }),
+        geocodeAddress(pointB, { signal: controller.signal }),
+      ]);
 
       if (!locA || !locB) {
         setError('Could not find one or both locations. Try a well-known landmark or neighbourhood.');
-        setIsLoading(false);
         return;
       }
 
-      const coordsA: [number, number] = [locA.lat, locA.lon];
-      const coordsB: [number, number] = [locB.lat, locB.lon];
-      setPointACoords(coordsA);
-      setPointBCoords(coordsB);
-
-      const routeData = await getRoute({ lat: locA.lat, lon: locA.lon }, { lat: locB.lat, lon: locB.lon });
+      setSearchStage('routing');
+      const routeData = await getRoute(
+        { lat: locA.lat, lon: locA.lon },
+        { lat: locB.lat, lon: locB.lon },
+        { signal: controller.signal }
+      );
 
       if (!routeData) {
         setError('Could not calculate a driving route between these two points.');
-        setIsLoading(false);
         return;
       }
 
-      setRoute(routeData);
-      setRouteSummary({ distance: routeData.distance, duration: routeData.duration });
-
-      const kgs = await searchKindergartensAlongRoute(routeData, maxDistanceMetres);
-      setAllKindergartens(kgs);
+      setSearchStage('finding');
+      const kgs = await searchKindergartensAlongRoute(routeData, maxDistanceMetres, {
+        signal: controller.signal,
+      });
 
       const filtered = kgs.filter(kg => kg.distanceFromRoute * 1000 <= maxDistanceMetres);
       // Featured kindergartens always appear first
@@ -72,20 +83,40 @@ export default function Home() {
         if (!a.featured && b.featured) return 1;
         return a.distanceFromRoute - b.distanceFromRoute;
       });
-      setFilteredKindergartens(filtered);
 
       if (filtered.length === 0) {
         setError(`No kindergartens found within ${maxDistanceMetres}m of the route. Try increasing the distance.`);
       }
 
+      const coordsA: [number, number] = [locA.lat, locA.lon];
+      const coordsB: [number, number] = [locB.lat, locB.lon];
+      setPointACoords(coordsA);
+      setPointBCoords(coordsB);
+      setRoute(routeData);
+      setRouteSummary({ distance: routeData.distance, duration: routeData.duration });
+      setAllKindergartens(kgs);
+      setFilteredKindergartens(filtered);
+      setSelectedKindergarten(null);
       setHasSearched(true);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setSearchNotice('Search canceled.');
+        return;
+      }
       console.error('[handleSearch] Error:', err);
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(`Search failed: ${msg}. Please try again.`);
     } finally {
       setIsLoading(false);
+      setSearchStage('idle');
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
+  };
+
+  const handleCancelSearch = () => {
+    abortControllerRef.current?.abort();
   };
 
   const handleSliderChange = useCallback((newDistance: number) => {
@@ -158,11 +189,26 @@ export default function Home() {
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                    Searching...
+                    {stageLabel[searchStage] || 'Searching...'}
                   </span>
                 ) : '🔍 Find Kindergartens'}
               </button>
+              {isLoading && (
+                <button
+                  onClick={handleCancelSearch}
+                  className="sm:w-auto w-full px-4 py-2.5 bg-white/20 text-white font-semibold rounded-xl hover:bg-white/30 transition-all text-sm whitespace-nowrap border border-white/30"
+                >
+                  Cancel Search
+                </button>
+              )}
             </div>
+
+            {isLoading && searchStage !== 'idle' && (
+              <div className="mt-2 text-xs text-blue-100">
+                {hasSearched ? 'Updating results… ' : ''}
+                {stageLabel[searchStage]}
+              </div>
+            )}
 
             {/* Distance slider */}
             <div className="flex items-center gap-3 mt-2.5">
@@ -194,6 +240,13 @@ export default function Home() {
               <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-red-500/20 border border-red-400/30 text-red-100 rounded-xl text-xs">
                 <span>⚠️</span>
                 <span>{error}</span>
+              </div>
+            )}
+
+            {searchNotice && (
+              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-blue-500/20 border border-blue-300/30 text-blue-100 rounded-xl text-xs">
+                <span>ℹ️</span>
+                <span>{searchNotice}</span>
               </div>
             )}
           </div>

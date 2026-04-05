@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const maxDuration = 60; // seconds - allow Overpass up to 60s
+export const maxDuration = 20;
+
+const PER_MIRROR_TIMEOUT_MS = 8000;
+const TOTAL_BUDGET_MS = 15000;
+
+type MirrorAttempt = {
+  mirror: string;
+  elapsedMs: number;
+  timedOut: boolean;
+  status?: number;
+  error?: string;
+};
 
 export async function POST(req: NextRequest) {
   const body = await req.text(); // expects "data=<url-encoded-query>"
@@ -11,33 +22,62 @@ export async function POST(req: NextRequest) {
     'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   ];
 
-  let lastError = '';
+  const attempts: MirrorAttempt[] = [];
+  const startedAt = Date.now();
 
   for (const mirror of MIRRORS) {
+    const elapsedTotal = Date.now() - startedAt;
+    const remainingBudget = TOTAL_BUDGET_MS - elapsedTotal;
+    if (remainingBudget <= 0) break;
+
+    const timeoutMs = Math.min(PER_MIRROR_TIMEOUT_MS, remainingBudget);
+    const attemptStart = Date.now();
+
     try {
       const response = await fetch(mirror, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!response.ok) {
-        lastError = `${mirror} → HTTP ${response.status}`;
-        console.warn(`[Overpass proxy] ${lastError}`);
+        attempts.push({
+          mirror,
+          elapsedMs: Date.now() - attemptStart,
+          timedOut: false,
+          status: response.status,
+          error: `HTTP ${response.status}`,
+        });
+        console.warn(`[Overpass proxy] ${mirror} → HTTP ${response.status}`);
         continue;
       }
 
       const data = await response.json();
       return NextResponse.json(data);
     } catch (err) {
-      lastError = `${mirror} → ${err}`;
-      console.warn(`[Overpass proxy] ${lastError}`);
+      const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
+      const errorText = err instanceof Error ? err.message : String(err);
+      attempts.push({
+        mirror,
+        elapsedMs: Date.now() - attemptStart,
+        timedOut: isTimeout,
+        error: errorText,
+      });
+      console.warn(`[Overpass proxy] ${mirror} → ${errorText}`);
     }
   }
 
+  const totalElapsedMs = Date.now() - startedAt;
+
   return NextResponse.json(
-    { error: `All Overpass mirrors failed. Last: ${lastError}` },
+    {
+      error: 'All Overpass mirrors failed within time budget',
+      reason: totalElapsedMs >= TOTAL_BUDGET_MS ? 'timeout_budget_exceeded' : 'all_mirrors_failed',
+      timedOut: totalElapsedMs >= TOTAL_BUDGET_MS,
+      totalElapsedMs,
+      attempts,
+    },
     { status: 502 }
   );
 }

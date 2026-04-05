@@ -82,10 +82,12 @@ function routeBbox(route: Route, paddingKm: number): { minLat: number; maxLat: n
 
 export async function searchKindergartensAlongRoute(
   route: Route,
-  maxDistanceMetres: number = 500
+  maxDistanceMetres: number = 500,
+  options?: { signal?: AbortSignal }
 ): Promise<Kindergarten[]> {
-  // Use route bbox + 2km padding for the Overpass query
-  const bbox = routeBbox(route, 2);
+  // Use route bbox + padding based on selected distance (minimum 2km)
+  const paddingKm = Math.max(2, maxDistanceMetres / 1000);
+  const bbox = routeBbox(route, paddingKm);
 
   const query = `[out:json][timeout:20];
 (
@@ -101,6 +103,7 @@ out center;`;
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: `data=${encodeURIComponent(query)}`,
+    signal: options?.signal ?? AbortSignal.timeout(30000),
   });
 
   if (!response.ok) {
