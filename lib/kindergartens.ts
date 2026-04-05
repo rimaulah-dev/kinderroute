@@ -23,6 +23,29 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function simplifyRouteCoordinates(coords: [number, number][], thresholdDeg: number = 0.00025): [number, number][] {
+  if (coords.length <= 2) return coords;
+  const simplified: [number, number][] = [coords[0]];
+  let [lastLat, lastLon] = coords[0];
+
+  for (let i = 1; i < coords.length - 1; i++) {
+    const [lat, lon] = coords[i];
+    if (Math.abs(lat - lastLat) >= thresholdDeg || Math.abs(lon - lastLon) >= thresholdDeg) {
+      simplified.push([lat, lon]);
+      lastLat = lat;
+      lastLon = lon;
+    }
+  }
+
+  const finalCoord = coords[coords.length - 1];
+  const lastSimplified = simplified[simplified.length - 1];
+  if (lastSimplified[0] !== finalCoord[0] || lastSimplified[1] !== finalCoord[1]) {
+    simplified.push(finalCoord);
+  }
+
+  return simplified;
+}
+
 /**
  * Minimum distance in km from a point to a polyline segment.
  * route.coordinates are [lat, lng] pairs.
@@ -88,6 +111,10 @@ export async function searchKindergartensAlongRoute(
   // Use route bbox + padding based on selected distance (minimum 2km)
   const paddingKm = Math.max(2, maxDistanceMetres / 1000);
   const bbox = routeBbox(route, paddingKm);
+  const simplifiedRoute: Route = {
+    ...route,
+    coordinates: simplifyRouteCoordinates(route.coordinates),
+  };
 
   const query = `[out:json][timeout:20];
 (
@@ -137,7 +164,7 @@ out center;`;
       continue;
     }
 
-    const distKm = distanceFromRouteKm(lat, lon, route);
+    const distKm = distanceFromRouteKm(lat, lon, simplifiedRoute);
 
     // Include all found (we'll filter by slider in the UI)
     const name =
