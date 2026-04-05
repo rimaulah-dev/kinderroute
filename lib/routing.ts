@@ -1,12 +1,19 @@
 import { Location, Route } from './types';
 
-export async function getRoute(from: Location, to: Location): Promise<Route | null> {
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === 'AbortError';
+
+export async function getRoute(
+  from: Location,
+  to: Location,
+  options?: { signal?: AbortSignal }
+): Promise<Route | null> {
   const coords = `${from.lon},${from.lat};${to.lon},${to.lat}`;
   const url = `/api/route?coords=${coords}`;
 
   try {
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
+      signal: options?.signal ?? AbortSignal.timeout(15000),
     });
     if (!response.ok) return null;
 
@@ -24,8 +31,9 @@ export async function getRoute(from: Location, to: Location): Promise<Route | nu
       distance: osrmRoute.distance,
       duration: osrmRoute.duration,
     };
-  } catch (err) {
-    console.error('Routing error:', err);
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    console.error('Routing error:', error);
     return null;
   }
 }
