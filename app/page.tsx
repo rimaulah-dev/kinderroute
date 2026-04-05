@@ -56,8 +56,15 @@ export default function Home() {
 
       if (!locA || !locB) {
         setError('Could not find one or both locations. Try a well-known landmark or neighbourhood.');
+        setIsLoading(false);
+        setSearchStage('idle');
         return;
       }
+
+      const coordsA: [number, number] = [locA.lat, locA.lon];
+      const coordsB: [number, number] = [locB.lat, locB.lon];
+      setPointACoords(coordsA);
+      setPointBCoords(coordsB);
 
       setSearchStage('routing');
       const routeData = await getRoute(
@@ -68,13 +75,19 @@ export default function Home() {
 
       if (!routeData) {
         setError('Could not calculate a driving route between these two points.');
+        setIsLoading(false);
+        setSearchStage('idle');
         return;
       }
+
+      setRoute(routeData);
+      setRouteSummary({ distance: routeData.distance, duration: routeData.duration });
 
       setSearchStage('finding');
       const kgs = await searchKindergartensAlongRoute(routeData, maxDistanceMetres, {
         signal: controller.signal,
       });
+      setAllKindergartens(kgs);
 
       const filtered = kgs.filter(kg => kg.distanceFromRoute * 1000 <= maxDistanceMetres);
       // Featured kindergartens always appear first
@@ -204,10 +217,7 @@ export default function Home() {
             </div>
 
             {isLoading && searchStage !== 'idle' && (
-              <div className="mt-2 text-xs text-blue-100">
-                {hasSearched ? 'Updating results… ' : ''}
-                {stageLabel[searchStage]}
-              </div>
+              <div className="mt-2 text-xs text-blue-100">{stageLabel[searchStage]}</div>
             )}
 
             {/* Distance slider */}
