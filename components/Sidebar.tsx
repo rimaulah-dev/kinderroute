@@ -48,6 +48,7 @@ function ClaimModal({ kg, onClose }: { kg: Kindergarten; onClose: () => void }) 
   const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -57,15 +58,20 @@ function ClaimModal({ kg, onClose }: { kg: Kindergarten; onClose: () => void }) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await fetch('/api/claim', {
+      const response = await fetch('/api/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, kindergartenName: kg.name, lat: kg.lat, lon: kg.lon }),
       });
+      if (!response.ok) {
+        throw new Error('Unable to submit claim right now.');
+      }
       setSubmitted(true);
-    } catch {
-      setSubmitted(true); // show success anyway - don't block UX
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unable to submit claim right now.';
+      setSubmitError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -80,7 +86,7 @@ function ClaimModal({ kg, onClose }: { kg: Kindergarten; onClose: () => void }) 
           <div className="text-center py-4">
             <div className="text-5xl mb-3">🎉</div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Request Received!</h3>
-            <p className="text-gray-500 text-sm mb-4">We'll be in touch within 24 hours to help you set up your listing.</p>
+            <p className="text-gray-500 text-sm mb-4">We&apos;ll be in touch within 24 hours to help you set up your listing.</p>
             <button onClick={onClose} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-semibold text-sm hover:bg-indigo-700">Done</button>
           </div>
         ) : (
@@ -106,6 +112,11 @@ function ClaimModal({ kg, onClose }: { kg: Kindergarten; onClose: () => void }) 
                 className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-semibold text-sm hover:bg-indigo-700 disabled:opacity-60 transition-colors">
                 {submitting ? 'Submitting...' : 'Submit Claim Request'}
               </button>
+              {submitError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
+                  {submitError} Please try again.
+                </p>
+              )}
             </form>
           </>
         )}

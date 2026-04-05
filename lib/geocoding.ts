@@ -1,15 +1,16 @@
 import { Location } from './types';
+type GeocodeOptions = { signal?: AbortSignal };
 
 /**
  * Geocode using Photon (photon.komoot.io) — better coverage for Malaysian addresses
  * Returns coordinates biased toward Malaysia
  */
-async function geocodeWithPhoton(query: string): Promise<Location | null> {
+async function geocodeWithPhoton(query: string, options?: GeocodeOptions): Promise<Location | null> {
   try {
     // Bias results toward Malaysia (lat=3.1, lon=101.7)
     const url = `/api/geocode?q=${encodeURIComponent(query)}&limit=1&lang=en&lat=3.1&lon=101.7`;
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
+      signal: options?.signal ?? AbortSignal.timeout(15000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -31,11 +32,11 @@ async function geocodeWithPhoton(query: string): Promise<Location | null> {
 /**
  * Geocode using Nominatim (OpenStreetMap)
  */
-async function geocodeWithNominatim(query: string): Promise<Location | null> {
+async function geocodeWithNominatim(query: string, options?: GeocodeOptions): Promise<Location | null> {
   try {
     const url = `/api/nominatim?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=my`;
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
+      signal: options?.signal ?? AbortSignal.timeout(15000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -55,13 +56,13 @@ async function geocodeWithNominatim(query: string): Promise<Location | null> {
  * Geocode an address — tries Photon first, then Nominatim as fallback.
  * Validates result is within Malaysia bounding box.
  */
-export async function geocodeAddress(query: string): Promise<Location | null> {
+export async function geocodeAddress(query: string, options?: GeocodeOptions): Promise<Location | null> {
   // Malaysia bounding box (rough)
   const inMalaysia = (lat: number, lon: number) =>
     lat >= 0.8 && lat <= 7.4 && lon >= 99.6 && lon <= 119.3;
 
   // Try Photon first
-  const photonResult = await geocodeWithPhoton(query);
+  const photonResult = await geocodeWithPhoton(query, options);
   if (photonResult && inMalaysia(photonResult.lat, photonResult.lon)) {
     return photonResult;
   }
@@ -70,7 +71,7 @@ export async function geocodeAddress(query: string): Promise<Location | null> {
   try {
     const url = `/api/geocode?q=${encodeURIComponent(query + ' Malaysia')}&limit=1&lang=en&lat=3.1&lon=101.7`;
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
+      signal: options?.signal ?? AbortSignal.timeout(15000),
     });
     if (res.ok) {
       const data = await res.json();
@@ -87,7 +88,7 @@ export async function geocodeAddress(query: string): Promise<Location | null> {
   } catch { /* fall through */ }
 
   // Fallback to Nominatim
-  const nominatimResult = await geocodeWithNominatim(query);
+  const nominatimResult = await geocodeWithNominatim(query, options);
   if (nominatimResult && inMalaysia(nominatimResult.lat, nominatimResult.lon)) {
     return nominatimResult;
   }
@@ -96,7 +97,7 @@ export async function geocodeAddress(query: string): Promise<Location | null> {
   try {
     const url = `/api/nominatim?q=${encodeURIComponent(query)}&format=json&limit=1`;
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
+      signal: options?.signal ?? AbortSignal.timeout(15000),
     });
     if (res.ok) {
       const data = await res.json();
