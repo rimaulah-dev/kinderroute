@@ -1,6 +1,9 @@
 import { Location } from './types';
 type GeocodeOptions = { signal?: AbortSignal };
 
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === 'AbortError';
+
 /**
  * Geocode using Photon (photon.komoot.io) — better coverage for Malaysian addresses
  * Returns coordinates biased toward Malaysia
@@ -24,7 +27,8 @@ async function geocodeWithPhoton(query: string, options?: GeocodeOptions): Promi
       .join(', ');
 
     return { lat, lon, display_name: display };
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) throw error;
     return null;
   }
 }
@@ -47,7 +51,8 @@ async function geocodeWithNominatim(query: string, options?: GeocodeOptions): Pr
       lon: parseFloat(data[0].lon),
       display_name: data[0].display_name,
     };
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) throw error;
     return null;
   }
 }
@@ -85,7 +90,10 @@ export async function geocodeAddress(query: string, options?: GeocodeOptions): P
         }
       }
     }
-  } catch { /* fall through */ }
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    /* fall through */
+  }
 
   // Fallback to Nominatim
   const nominatimResult = await geocodeWithNominatim(query, options);
@@ -109,7 +117,10 @@ export async function geocodeAddress(query: string, options?: GeocodeOptions): P
         }
       }
     }
-  } catch { /* give up */ }
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    /* give up */
+  }
 
   return null;
 }

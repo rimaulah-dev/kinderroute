@@ -1,5 +1,8 @@
 import { Location, Route } from './types';
 
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === 'AbortError';
+
 export async function getRoute(
   from: Location,
   to: Location,
@@ -28,8 +31,9 @@ export async function getRoute(
       distance: osrmRoute.distance,
       duration: osrmRoute.duration,
     };
-  } catch (err) {
-    console.error('Routing error:', err);
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    console.error('Routing error:', error);
     return null;
   }
 }
