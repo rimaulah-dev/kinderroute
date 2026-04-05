@@ -47,11 +47,6 @@ export default function Home() {
     setSearchStage('geocoding');
     setSearchNotice(null);
     setError(null);
-    setRoute(null);
-    setRouteSummary(null);
-    setAllKindergartens([]);
-    setFilteredKindergartens([]);
-    setSelectedKindergarten(null);
 
     try {
       const [locA, locB] = await Promise.all([
@@ -101,12 +96,20 @@ export default function Home() {
         if (!a.featured && b.featured) return 1;
         return a.distanceFromRoute - b.distanceFromRoute;
       });
-      setFilteredKindergartens(filtered);
 
       if (filtered.length === 0) {
         setError(`No kindergartens found within ${maxDistanceMetres}m of the route. Try increasing the distance.`);
       }
 
+      const coordsA: [number, number] = [locA.lat, locA.lon];
+      const coordsB: [number, number] = [locB.lat, locB.lon];
+      setPointACoords(coordsA);
+      setPointBCoords(coordsB);
+      setRoute(routeData);
+      setRouteSummary({ distance: routeData.distance, duration: routeData.duration });
+      setAllKindergartens(kgs);
+      setFilteredKindergartens(filtered);
+      setSelectedKindergarten(null);
       setHasSearched(true);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
