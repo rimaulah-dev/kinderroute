@@ -10,7 +10,7 @@ import Sidebar from '@/components/Sidebar';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 import AddressInput from '@/components/AddressInput';
 
-const Map = dynamic(() => import('@/components/Map'), { ssr: false });
+const MapView = dynamic(() => import('@/components/Map'), { ssr: false });
 
 export default function Home() {
   const [pointA, setPointA] = useState('Chow Kit, Kuala Lumpur');
@@ -307,7 +307,7 @@ export default function Home() {
         {/* ── MAIN CONTENT ── */}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1">
-            <Map
+          <MapView
               pointA={pointACoords}
               pointB={pointBCoords}
               kindergartens={filteredKindergartens}
