@@ -39,12 +39,12 @@ export default function Home() {
     routeSummary: { distance: number; duration: number };
   }>>(new Map());
 
-  const stageLabel: Record<'idle' | 'geocoding' | 'routing' | 'finding', string> = useMemo(() => ({
+  const stageLabel: Record<'idle' | 'geocoding' | 'routing' | 'finding', string> = {
     idle: '',
     geocoding: 'Finding addresses...',
     routing: 'Calculating route...',
     finding: 'Finding kindergartens...',
-  },
+  };
 
   const getSearchCacheKey = (from: string, to: string, distanceMetres: number) =>
     `${from.trim().toLowerCase()}|${to.trim().toLowerCase()}|${distanceMetres}`;
@@ -157,11 +157,11 @@ export default function Home() {
         abortControllerRef.current = null;
       }
     }
-  }, [isLoading, pointA, pointB, maxDistanceMetres]);
+  };
 
-  const handleCancelSearch = useCallback(() => {
+  const handleCancelSearch = () => {
     abortControllerRef.current?.abort();
-  }, []);
+  };
 
   const handleSliderChange = useCallback((newDistance: number) => {
     setMaxDistanceMetres(newDistance);
@@ -188,16 +188,16 @@ export default function Home() {
     };
   }, []);
 
-  const handleKindergartenSelect = useCallback((kg: Kindergarten) => setSelectedKindergarten(kg), []);
+  const handleKindergartenSelect = (kg: Kindergarten) => setSelectedKindergarten(kg);
 
   const handleKindergartenUpdate = useCallback((updated: Kindergarten) => {
     setAllKindergartens(prev => prev.map(k => k.id === updated.id ? updated : k));
     setFilteredKindergartens(prev => prev.map(k => k.id === updated.id ? updated : k));
   }, []);
 
-  const distLabel = useMemo(() => maxDistanceMetres >= 1000
+  const distLabel = maxDistanceMetres >= 1000
     ? `${(maxDistanceMetres / 1000).toFixed(1)} km`
-    : `${maxDistanceMetres} m`, [maxDistanceMetres]);
+    : `${maxDistanceMetres} m`;
 
   return (
     <>

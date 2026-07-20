@@ -9,20 +9,18 @@ interface OverpassElement {
   tags?: Record<string, string>;
 }
 
-const EARTH_RADIUS_KM = 6371;
-const DEG_TO_RAD = Math.PI / 180;
-
 function toRadians(deg: number): number {
-  return deg * DEG_TO_RAD;
+  return deg * (Math.PI / 180);
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
   const dLat = toRadians(lat2 - lat1);
   const dLon = toRadians(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function simplifyRouteCoordinates(coords: [number, number][], thresholdDeg: number = 0.00025): [number, number][] {
@@ -53,7 +51,7 @@ function simplifyRouteCoordinates(coords: [number, number][], thresholdDeg: numb
  * route.coordinates are [lat, lng] pairs.
  */
 function distanceFromRouteKm(lat: number, lon: number, route: Route): number {
-  const coords = route.coordinates;
+  const coords = route.coordinates; // each is [lat, lng]
   if (coords.length === 0) return Infinity;
   if (coords.length === 1) return haversineKm(lat, lon, coords[0][0], coords[0][1]);
 
@@ -63,6 +61,7 @@ function distanceFromRouteKm(lat: number, lon: number, route: Route): number {
     const [lat1, lon1] = coords[i];
     const [lat2, lon2] = coords[i + 1];
 
+    // Project point onto segment in lat/lon space (approximate but fine for small distances)
     const dx = lat2 - lat1;
     const dy = lon2 - lon1;
     const lenSq = dx * dx + dy * dy;
