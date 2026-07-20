@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { geocodeAddress } from '@/lib/geocoding';
 import { searchKindergartensAlongRoute } from '@/lib/kindergartens';
@@ -30,14 +30,14 @@ export default function Home() {
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const stageLabel: Record<'idle' | 'geocoding' | 'routing' | 'finding', string> = {
+  const stageLabel: Record<'idle' | 'geocoding' | 'routing' | 'finding', string> = useMemo(() => ({
     idle: '',
     geocoding: 'Finding addresses...',
     routing: 'Calculating route...',
     finding: 'Finding kindergartens...',
-  };
-
-  const handleSearch = async () => {
+  }), []);
+  
+  const handleSearch = useCallback(async () => {
     if (isLoading) return;
 
     const controller = new AbortController();
@@ -101,8 +101,6 @@ export default function Home() {
         setError(`No kindergartens found within ${maxDistanceMetres}m of the route. Try increasing the distance.`);
       }
 
-      const coordsA: [number, number] = [locA.lat, locA.lon];
-      const coordsB: [number, number] = [locB.lat, locB.lon];
       setPointACoords(coordsA);
       setPointBCoords(coordsB);
       setRoute(routeData);
@@ -126,11 +124,11 @@ export default function Home() {
         abortControllerRef.current = null;
       }
     }
-  };
+  }, [isLoading, pointA, pointB, maxDistanceMetres]);
 
-  const handleCancelSearch = () => {
+  const handleCancelSearch = useCallback(() => {
     abortControllerRef.current?.abort();
-  };
+  }, []);
 
   const handleSliderChange = useCallback((newDistance: number) => {
     setMaxDistanceMetres(newDistance);
@@ -149,16 +147,16 @@ export default function Home() {
     }
   }, [allKindergartens]);
 
-  const handleKindergartenSelect = (kg: Kindergarten) => setSelectedKindergarten(kg);
+  const handleKindergartenSelect = useCallback((kg: Kindergarten) => setSelectedKindergarten(kg), []);
 
   const handleKindergartenUpdate = useCallback((updated: Kindergarten) => {
     setAllKindergartens(prev => prev.map(k => k.id === updated.id ? updated : k));
     setFilteredKindergartens(prev => prev.map(k => k.id === updated.id ? updated : k));
   }, []);
 
-  const distLabel = maxDistanceMetres >= 1000
+  const distLabel = useMemo(() => maxDistanceMetres >= 1000
     ? `${(maxDistanceMetres / 1000).toFixed(1)} km`
-    : `${maxDistanceMetres} m`;
+    : `${maxDistanceMetres} m`, [maxDistanceMetres]);
 
   return (
     <>

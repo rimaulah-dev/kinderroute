@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Kindergarten, Route } from '@/lib/types';
@@ -26,6 +26,17 @@ export default function Map({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const routeLayerRef = useRef<L.Polyline | null>(null);
+  const prevSelectedIdRef = useRef<string | null>(null);
+
+  // Memoize icon creation to avoid recreating on every render
+  const createIcon = useMemo(() => (color: string) => {
+    return L.divIcon({
+      className: 'custom-div-icon',
+      html: '<div style="background-color:' + color + ';width:24px;height:24px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+  }, []);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -51,15 +62,6 @@ export default function Map({
 
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
-
-    const createIcon = (color: string) => {
-      return L.divIcon({
-        className: 'custom-div-icon',
-        html: '<div style="background-color:' + color + ';width:24px;height:24px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
-    };
 
     if (pointA) {
       const markerA = L.marker(pointA, { icon: createIcon('#22c55e') })
@@ -89,11 +91,12 @@ export default function Map({
       markersRef.current.push(marker);
     });
 
-    if (markersRef.current.length > 0) {
+    // Only fit bounds when locations change significantly
+    if (markersRef.current.length > 0 && (pointA || pointB)) {
       const group = L.featureGroup(markersRef.current);
       mapRef.current.fitBounds(group.getBounds().pad(0.1));
     }
-  }, [pointA, pointB, kindergartens, selectedKindergarten, onKindergartenClick]);
+  }, [pointA, pointB, kindergartens, selectedKindergarten?.id, onKindergartenClick, createIcon]);
 
   useEffect(() => {
     if (!mapRef.current) return;
