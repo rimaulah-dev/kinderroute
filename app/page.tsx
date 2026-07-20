@@ -44,7 +44,7 @@ export default function Home() {
     geocoding: 'Finding addresses...',
     routing: 'Calculating route...',
     finding: 'Finding kindergartens...',
-  };
+  },
 
   const getSearchCacheKey = (from: string, to: string, distanceMetres: number) =>
     `${from.trim().toLowerCase()}|${to.trim().toLowerCase()}|${distanceMetres}`;
