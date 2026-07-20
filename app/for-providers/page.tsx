@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { FormEvent, useState } from 'react';
 
 const tiers = [
   {
@@ -57,6 +60,41 @@ const tiers = [
 ];
 
 export default function ForProviders() {
+  const [leadForm, setLeadForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    kindergartenName: '',
+    message: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleLeadSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitState('idle');
+    try {
+      const response = await fetch('/api/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...leadForm,
+          message: leadForm.message || 'Provider listing enquiry from /for-providers',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed');
+      }
+      setSubmitState('success');
+      setLeadForm({ name: '', email: '', phone: '', kindergartenName: '', message: '' });
+    } catch {
+      setSubmitState('error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-blue-50">
       {/* Nav */}
@@ -142,10 +180,61 @@ export default function ForProviders() {
 
         {/* CTA */}
         <div className="mt-12 text-center">
-          <div className="inline-block bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl p-8 text-white max-w-md">
+          <div className="inline-block bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl p-8 text-white max-w-xl w-full">
             <div className="text-3xl mb-2">🚀</div>
             <h3 className="text-xl font-bold mb-2">Ready to get started?</h3>
-            <p className="text-sm text-indigo-200 mb-4">Join kindergartens already using KinderRoute to reach more families.</p>
+            <p className="text-sm text-indigo-200 mb-4">Submit this quick form and we’ll follow up within 24 hours.</p>
+            <form onSubmit={handleLeadSubmit} className="space-y-2 text-left mb-3">
+              <input
+                required
+                placeholder="Your name"
+                value={leadForm.name}
+                onChange={(e) => setLeadForm((prev) => ({ ...prev, name: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2 text-sm text-gray-900"
+              />
+              <input
+                required
+                type="email"
+                placeholder="Email address"
+                value={leadForm.email}
+                onChange={(e) => setLeadForm((prev) => ({ ...prev, email: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2 text-sm text-gray-900"
+              />
+              <input
+                required
+                placeholder="Kindergarten name"
+                value={leadForm.kindergartenName}
+                onChange={(e) => setLeadForm((prev) => ({ ...prev, kindergartenName: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2 text-sm text-gray-900"
+              />
+              <input
+                placeholder="Phone (optional)"
+                value={leadForm.phone}
+                onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2 text-sm text-gray-900"
+              />
+              <textarea
+                placeholder="Anything we should know? (optional)"
+                value={leadForm.message}
+                onChange={(e) => setLeadForm((prev) => ({ ...prev, message: e.target.value }))}
+                rows={2}
+                className="w-full rounded-xl px-3 py-2 text-sm text-gray-900 resize-none"
+              />
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="block w-full py-3 px-6 bg-white text-indigo-700 font-bold rounded-xl hover:bg-indigo-50 transition-colors text-sm disabled:opacity-60"
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit Enquiry'}
+              </button>
+            </form>
+            {submitState === 'success' && (
+              <p className="text-xs text-emerald-100 mb-3">Thanks! We’ve received your enquiry and will contact you soon.</p>
+            )}
+            {submitState === 'error' && (
+              <p className="text-xs text-red-100 mb-3">Couldn’t submit right now. Please retry or email us directly below.</p>
+            )}
+            <p className="text-xs text-indigo-100 mb-2">Prefer email? Use our fallback contact:</p>
             <a href="mailto:hello@kinderroute.my?subject=Listing+enquiry"
               className="block py-3 px-6 bg-white text-indigo-700 font-bold rounded-xl hover:bg-indigo-50 transition-colors text-sm">
               Contact Us → hello@kinderroute.my

@@ -4,6 +4,12 @@ export const maxDuration = 20;
 
 const PER_MIRROR_TIMEOUT_MS = 8000;
 const TOTAL_BUDGET_MS = 15000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+type CachedOverpass = {
+  ts: number;
+  data: unknown;
+};
 
 type MirrorAttempt = {
   mirror: string;
@@ -13,8 +19,18 @@ type MirrorAttempt = {
   error?: string;
 };
 
+const overpassCache: Map<string, CachedOverpass> =
+  ((globalThis as { __kinderrouteOverpassCache?: Map<string, CachedOverpass> }).__kinderrouteOverpassCache ??=
+    new Map<string, CachedOverpass>());
+
 export async function POST(req: NextRequest) {
   const body = await req.text(); // expects "data=<url-encoded-query>"
+  const cacheKey = body.trim();
+
+  const cached = overpassCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return NextResponse.json(cached.data, { headers: { 'x-overpass-cache': 'hit' } });
+  }
 
   const MIRRORS = [
     'https://overpass.kumi.systems/api/interpreter',
@@ -54,7 +70,8 @@ export async function POST(req: NextRequest) {
       }
 
       const data = await response.json();
-      return NextResponse.json(data);
+      overpassCache.set(cacheKey, { ts: Date.now(), data });
+      return NextResponse.json(data, { headers: { 'x-overpass-cache': 'miss' } });
     } catch (err) {
       const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
       const errorText = err instanceof Error ? err.message : String(err);

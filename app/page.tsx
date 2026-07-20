@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { geocodeAddress } from '@/lib/geocoding';
 import { searchKindergartensAlongRoute } from '@/lib/kindergartens';
@@ -10,7 +10,7 @@ import Sidebar from '@/components/Sidebar';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 import AddressInput from '@/components/AddressInput';
 
-const Map = dynamic(() => import('@/components/Map'), { ssr: false });
+const MapView = dynamic(() => import('@/components/Map'), { ssr: false });
 
 export default function Home() {
   const [pointA, setPointA] = useState('Chow Kit, Kuala Lumpur');
@@ -29,19 +29,60 @@ export default function Home() {
   const [searchStage, setSearchStage] = useState<'idle' | 'geocoding' | 'routing' | 'finding'>('idle');
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sliderDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const searchCacheRef = useRef<Map<string, {
+    pointA: [number, number];
+    pointB: [number, number];
+    route: Route;
+    all: Kindergarten[];
+    filtered: Kindergarten[];
+    routeSummary: { distance: number; duration: number };
+  }>>(new Map());
 
   const stageLabel: Record<'idle' | 'geocoding' | 'routing' | 'finding', string> = useMemo(() => ({
     idle: '',
     geocoding: 'Finding addresses...',
     routing: 'Calculating route...',
     finding: 'Finding kindergartens...',
-  }), []);
-  
-  const handleSearch = useCallback(async () => {
+  };
+
+  const getSearchCacheKey = (from: string, to: string, distanceMetres: number) =>
+    `${from.trim().toLowerCase()}|${to.trim().toLowerCase()}|${distanceMetres}`;
+
+  const sortAndFilter = useCallback((kindergartens: Kindergarten[], distanceMetres: number) => {
+    const filtered = kindergartens.filter(kg => kg.distanceFromRoute * 1000 <= distanceMetres);
+    filtered.sort((a, b) => {
+      if (a.featured && !b.featured) return -1;
+      if (!a.featured && b.featured) return 1;
+      return a.distanceFromRoute - b.distanceFromRoute;
+    });
+    return filtered;
+  }, []);
+
+  const handleSearch = async () => {
     if (isLoading) return;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    const cacheKey = getSearchCacheKey(pointA, pointB, maxDistanceMetres);
+
+    const cached = searchCacheRef.current.get(cacheKey);
+    if (cached) {
+      setPointACoords(cached.pointA);
+      setPointBCoords(cached.pointB);
+      setRoute(cached.route);
+      setRouteSummary(cached.routeSummary);
+      setAllKindergartens(cached.all);
+      setFilteredKindergartens(cached.filtered);
+      setSelectedKindergarten(null);
+      setError(cached.filtered.length === 0
+        ? `No kindergartens found within ${maxDistanceMetres}m of the route. Try increasing the distance.`
+        : null);
+      setHasSearched(true);
+      setSearchNotice('Loaded cached results.');
+      abortControllerRef.current = null;
+      return;
+    }
 
     setIsLoading(true);
     setSearchStage('geocoding');
@@ -56,15 +97,8 @@ export default function Home() {
 
       if (!locA || !locB) {
         setError('Could not find one or both locations. Try a well-known landmark or neighbourhood.');
-        setIsLoading(false);
-        setSearchStage('idle');
         return;
       }
-
-      const coordsA: [number, number] = [locA.lat, locA.lon];
-      const coordsB: [number, number] = [locB.lat, locB.lon];
-      setPointACoords(coordsA);
-      setPointBCoords(coordsB);
 
       setSearchStage('routing');
       const routeData = await getRoute(
@@ -75,32 +109,22 @@ export default function Home() {
 
       if (!routeData) {
         setError('Could not calculate a driving route between these two points.');
-        setIsLoading(false);
-        setSearchStage('idle');
         return;
       }
-
-      setRoute(routeData);
-      setRouteSummary({ distance: routeData.distance, duration: routeData.duration });
 
       setSearchStage('finding');
       const kgs = await searchKindergartensAlongRoute(routeData, maxDistanceMetres, {
         signal: controller.signal,
       });
-      setAllKindergartens(kgs);
 
-      const filtered = kgs.filter(kg => kg.distanceFromRoute * 1000 <= maxDistanceMetres);
-      // Featured kindergartens always appear first
-      filtered.sort((a, b) => {
-        if (a.featured && !b.featured) return -1;
-        if (!a.featured && b.featured) return 1;
-        return a.distanceFromRoute - b.distanceFromRoute;
-      });
+      const filtered = sortAndFilter(kgs, maxDistanceMetres);
 
       if (filtered.length === 0) {
         setError(`No kindergartens found within ${maxDistanceMetres}m of the route. Try increasing the distance.`);
       }
 
+      const coordsA: [number, number] = [locA.lat, locA.lon];
+      const coordsB: [number, number] = [locB.lat, locB.lon];
       setPointACoords(coordsA);
       setPointBCoords(coordsB);
       setRoute(routeData);
@@ -109,6 +133,15 @@ export default function Home() {
       setFilteredKindergartens(filtered);
       setSelectedKindergarten(null);
       setHasSearched(true);
+
+      searchCacheRef.current.set(cacheKey, {
+        pointA: coordsA,
+        pointB: coordsB,
+        route: routeData,
+        routeSummary: { distance: routeData.distance, duration: routeData.duration },
+        all: kgs,
+        filtered,
+      });
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         setSearchNotice('Search canceled.');
@@ -133,19 +166,27 @@ export default function Home() {
   const handleSliderChange = useCallback((newDistance: number) => {
     setMaxDistanceMetres(newDistance);
     setError(null);
-    if (allKindergartens.length > 0) {
-      const filtered = allKindergartens.filter(kg => kg.distanceFromRoute * 1000 <= newDistance);
-      filtered.sort((a, b) => {
-        if (a.featured && !b.featured) return -1;
-        if (!a.featured && b.featured) return 1;
-        return a.distanceFromRoute - b.distanceFromRoute;
-      });
-      setFilteredKindergartens(filtered);
-      if (filtered.length === 0) {
-        setError(`No kindergartens within ${newDistance}m of the route.`);
-      }
+    if (sliderDebounceRef.current) {
+      clearTimeout(sliderDebounceRef.current);
     }
-  }, [allKindergartens]);
+    sliderDebounceRef.current = setTimeout(() => {
+      if (allKindergartens.length > 0) {
+        const filtered = sortAndFilter(allKindergartens, newDistance);
+        setFilteredKindergartens(filtered);
+        if (filtered.length === 0) {
+          setError(`No kindergartens within ${newDistance}m of the route.`);
+        }
+      }
+    }, 100);
+  }, [allKindergartens, sortAndFilter]);
+
+  useEffect(() => {
+    return () => {
+      if (sliderDebounceRef.current) {
+        clearTimeout(sliderDebounceRef.current);
+      }
+    };
+  }, []);
 
   const handleKindergartenSelect = useCallback((kg: Kindergarten) => setSelectedKindergarten(kg), []);
 
@@ -215,7 +256,10 @@ export default function Home() {
             </div>
 
             {isLoading && searchStage !== 'idle' && (
-              <div className="mt-2 text-xs text-blue-100">{stageLabel[searchStage]}</div>
+              <div className="mt-2 text-xs text-blue-100">
+                {hasSearched ? 'Updating results… ' : ''}
+                {stageLabel[searchStage]}
+              </div>
             )}
 
             {/* Distance slider */}
@@ -263,7 +307,7 @@ export default function Home() {
         {/* ── MAIN CONTENT ── */}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1">
-            <Map
+          <MapView
               pointA={pointACoords}
               pointB={pointBCoords}
               kindergartens={filteredKindergartens}
